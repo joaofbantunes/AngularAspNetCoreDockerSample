@@ -1,0 +1,14 @@
+<div *ngIf="!!counters" class="row">
+  <div class="col-sm-4">
+    <div class="list-group bg-dark">
+      <button *ngFor="let counter of counters" (click)="onCounterSelected(counter.id)" class="list-group-item list-group-item-action list-group-item-dark"
+        [class.active]="!!selectedCounter && selectedCounter.id == counter.id">
+        {{counter.name}}
+      </button>
+    </div>
+  </div>
+  <div class="col-sm-8" *ngIf="!!selectedCounter">
+    <h1>{{selectedCounter.name}}</h1>
+    {{selectedCounter.value}}
+  </div>
+</div>
