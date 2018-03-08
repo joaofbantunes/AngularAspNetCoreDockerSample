@@ -3,6 +3,7 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Polly;
 using System;
 
 namespace CodingMilitia.AngularAspNetCoreDockerSample.WebApi
@@ -13,26 +14,43 @@ namespace CodingMilitia.AngularAspNetCoreDockerSample.WebApi
         {
             var host = BuildWebHost(args);
 
-            //seed database
-            using (var scope = host.Services.CreateScope())
-            {
-                var services = scope.ServiceProvider;
-                try
-                {
-                    using (var db = services.GetRequiredService<CounterContext>())
+            var logger = host.Services.GetRequiredService<ILogger<Program>>();
+            var policy = Policy
+                .Handle<Exception>()
+                .WaitAndRetry(
+                    3,
+                    (retryCount) => TimeSpan.FromSeconds(10 * retryCount),
+                    (ex, span) =>
                     {
-                        db.Database.EnsureDeleted();
-                        db.Database.EnsureCreated();
-                        db.Counters.Add(new Data.Models.Counter { Name = "AngularAspNetCoreDockerSampleCounter", Value = 0 });
-                        db.Counters.Add(new Data.Models.Counter { Name = "AngularAspNetCoreDockerSampleCounter2", Value = 100 });
-                        db.SaveChanges();
-                    }
-                }
-                catch (Exception ex)
+                        logger.LogWarning(ex, "Failed! Waiting {cooldownTime}", span);
+                    });
+
+            //seed database
+            try
+            {
+                policy.Execute(() =>
                 {
-                    var logger = services.GetRequiredService<ILogger<Program>>();
-                    logger.LogError(ex, "An error occurred while seeding the database.");
-                }
+                    using (var scope = host.Services.CreateScope())
+                    {
+                        var services = scope.ServiceProvider;
+
+                        logger.LogInformation("Seeding database...");
+                        using (var db = services.GetRequiredService<CounterContext>())
+                        {
+                            db.Database.EnsureDeleted();
+                            db.Database.EnsureCreated();
+                            db.Counters.Add(new Data.Models.Counter { Name = "AngularAspNetCoreDockerSampleCounter", Value = 0 });
+                            db.Counters.Add(new Data.Models.Counter { Name = "AngularAspNetCoreDockerSampleCounter2", Value = 100 });
+                            db.SaveChanges();
+                        }
+                        logger.LogInformation("Seeding database complete.");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "An error occurred while seeding the database.");
+                return;
             }
 
             host.Run();
